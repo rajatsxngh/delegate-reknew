@@ -1,0 +1,74 @@
+# reknew.yaml — ReKnew AI-SDLC Platform Configuration
+# This file drives the entire system. Edit this to customize behavior.
+# No code changes needed for most configuration changes.
+
+# ─── Server ───────────────────────────────────────────
+port: 3000                          # Dashboard port
+
+# ─── Projects ─────────────────────────────────────────
+# Each project maps to a GitHub/JIRA repository.
+# The daemon watches these repos for new issues.
+projects:
+  slayer:
+    repo: ReKnew-Data-and-AI/sp-enablers-slayer
+    default_branch: main
+    test_command: "pytest -x"       # Pre-merge check command
+    path: ""                        # Local clone path (auto-populated)
+
+# ─── Defaults ─────────────────────────────────────────
+defaults:
+  agent: claude-code                # Default LLM adapter
+  workspace: worktree               # Isolation method (worktree | clone)
+  spec_tool: openspec               # Spec generation tool
+  max_parallel_agents: 5            # Max concurrent agents per project
+  agent_timeout: 3600               # Max seconds per agent run
+  stuck_timeout: 300                # Seconds with no output = stuck
+  review_enabled: true              # Agent-reviews-agent before PR
+
+# ─── Reactions ────────────────────────────────────────
+# Config-driven responses to GitHub events.
+# Pattern from Agent Orchestrator.
+reactions:
+  ci-failed:
+    auto: true                      # Automatically handle?
+    action: send-to-agent           # Re-prompt agent with error logs
+    retries: 2                      # Max retry attempts
+    max_cost: 5.00                  # Max $ to spend on retries
+  changes-requested:
+    auto: true
+    action: send-to-agent           # Route review comments to agent
+    escalate_after: 30m             # Escalate to human after timeout
+  approved-and-green:
+    auto: false                     # false = notify, true = auto-merge
+    action: notify
+
+# ─── Capacity Management ─────────────────────────────
+# Les's whiteboard concept: route tasks to human or AI.
+# Rules evaluated in order. First match wins.
+capacity:
+  allocated: human
+  unallocated: ai
+  rules:
+    - "label:critical -> human"
+    - "label:security -> human"
+    - "label:documentation -> ai"
+    - "label:bug -> ai"
+    - "label:enhancement -> ai"
+    - "complexity:high -> human"
+    - "priority:p0 -> human"
+    - "file_count:>20 -> human"     # Large changes need human review
+    - "default -> ai"
+
+# ─── Notifications ────────────────────────────────────
+notifications:
+  desktop: true
+  slack_webhook: ""                 # Optional Slack integration
+  email: ""                         # Optional email notifications
+
+# ─── GitHub ───────────────────────────────────────────
+github:
+  webhook_secret: ""                # For validating webhook payloads
+  auto_label_prs: true              # Add "reknew-ai" label to AI PRs
+  pr_prefix: "[ReKnew]"            # Prefix for PR titles
+  poll_interval: 30                 # Seconds between CI status polls
+  mode: poll                        # poll | webhook

@@ -23,6 +23,7 @@ dependencies = [
     "pyyaml>=6.0.3",
     "uvicorn[standard]>=0.40.0",
     "watchfiles>=1.0.0",
+    "PyGithub>=2.1.1",
 ]
 
 [build-system]

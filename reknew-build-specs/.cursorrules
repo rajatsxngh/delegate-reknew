@@ -1,0 +1,43 @@
+# .cursorrules — ReKnew AI-SDLC Platform
+
+## Project
+
+This is a Python project that extends Delegate (an AI agent orchestrator). ReKnew code is in `reknew/`. Do not modify `delegate/` unless the spec explicitly instructs it.
+
+## Stack
+
+- Python 3.12+ with type hints
+- FastAPI for API server
+- asyncio for daemon concurrency
+- PyGithub for GitHub API
+- anthropic SDK for LLM calls
+- pytest + pytest-asyncio for tests
+- dataclasses + Enum for data models
+- PyYAML for config
+- subprocess for git operations and agent spawning
+
+## Rules
+
+- Type hints on all function signatures
+- Google-style docstrings on all public methods
+- f-strings only (no .format())
+- Use pathlib.Path not os.path
+- Use subprocess.run not os.system
+- async/await for all I/O in daemon code
+- Catch specific exceptions, never bare except
+- Log with logging module (named loggers per module)
+- Config values from reknew.yaml, never hardcoded
+- Tests mock external APIs (GitHub, Anthropic) — never make real API calls in tests
+
+## File naming
+
+- Snake case for all Python files
+- One class per file for major components
+- __init__.py in every package directory
+- Tests named test_{module}.py
+
+## Git
+
+- Branch naming: reknew/task/T{number}
+- Only the daemon creates worktrees, branches, merges
+- Agents write code and commit inside worktrees only
