@@ -204,8 +204,8 @@ async def run_single_issue(repo_name: str, issue_number: int) -> None:
     bridge = OpenSpecBridge(str(clone_path))
     try:
         bridge.ensure_initialized()
-    except FileNotFoundError:
-        print("      (openspec CLI not found, skipping init)")
+    except (FileNotFoundError, subprocess.CalledProcessError):
+        print("      (openspec init skipped)")
 
     # Step 6: Create change proposal
     change_name = f"issue-{issue_number}"
@@ -322,8 +322,8 @@ async def run_issue_parallel(repo_name: str, issue_number: int) -> None:
     bridge = OpenSpecBridge(str(clone_path))
     try:
         bridge.ensure_initialized()
-    except FileNotFoundError:
-        print("      (openspec CLI not found, skipping init)")
+    except (FileNotFoundError, subprocess.CalledProcessError):
+        print("      (openspec init skipped)")
 
     change_name = f"issue-{issue_number}"
     bridge.create_change_proposal(openspec_text, change_name)
@@ -446,8 +446,8 @@ async def run_issue_full_pipeline(
     bridge = OpenSpecBridge(str(clone_path))
     try:
         bridge.ensure_initialized()
-    except FileNotFoundError:
-        print("      (openspec CLI not found, skipping init)")
+    except (FileNotFoundError, subprocess.CalledProcessError):
+        print("      (openspec init skipped)")
 
     change_name = f"issue-{issue_number}"
     bridge.create_change_proposal(openspec_text, change_name)
