@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ReKnew AI-SDLC Dashboard</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: #0d1117; color: #c9d1d9; min-height: 100vh;
+  }
+  header {
+    background: #161b22; border-bottom: 1px solid #30363d;
+    padding: 16px 32px; display: flex; align-items: center; justify-content: space-between;
+  }
+  header h1 { font-size: 20px; font-weight: 600; color: #f0f6fc; }
+  header h1 span { color: #58a6ff; }
+  .header-meta { font-size: 13px; color: #8b949e; display: flex; gap: 16px; align-items: center; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 6px; }
+  .dot.ok { background: #3fb950; } .dot.err { background: #f85149; }
+  .container { max-width: 1200px; margin: 0 auto; padding: 24px 32px; }
+
+  /* Cards */
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; margin-bottom: 24px; }
+  .card { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 20px; }
+  .card .label { font-size: 12px; text-transform: uppercase; letter-spacing: .5px; color: #8b949e; margin-bottom: 8px; }
+  .card .value { font-size: 32px; font-weight: 700; color: #f0f6fc; }
+  .card .value.blue { color: #58a6ff; } .card .value.green { color: #3fb950; }
+  .card .value.orange { color: #d29922; } .card .value.purple { color: #bc8cff; }
+
+  /* Sections */
+  .section { background: #161b22; border: 1px solid #30363d; border-radius: 8px; margin-bottom: 24px; overflow: hidden; }
+  .section-header {
+    padding: 16px 20px; border-bottom: 1px solid #30363d; font-size: 14px; font-weight: 600;
+    color: #f0f6fc; display: flex; align-items: center; justify-content: space-between;
+  }
+  .badge { background: #30363d; color: #8b949e; font-size: 12px; padding: 2px 8px; border-radius: 10px; font-weight: 400; }
+  .section-body { padding: 0; }
+
+  /* Table */
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th { text-align: left; padding: 10px 20px; font-size: 12px; text-transform: uppercase; letter-spacing: .5px; color: #8b949e; font-weight: 500; border-bottom: 1px solid #30363d; }
+  td { padding: 12px 20px; border-bottom: 1px solid #21262d; }
+  tr:last-child td { border-bottom: none; } tr:hover { background: #1c2129; }
+
+  /* Status */
+  .st {
+    display: inline-block; padding: 2px 10px; border-radius: 12px;
+    font-size: 12px; font-weight: 500;
+  }
+  .st.fetching, .st.fetched, .st.prompt_built { background: #0d419d; color: #58a6ff; }
+  .st.worktree_created { background: #1b3a4b; color: #79c0ff; }
+  .st.agent_running { background: #0d419d; color: #58a6ff; }
+  .st.agent_done, .st.pr_created, .st.ci_passed { background: #0f3d1c; color: #3fb950; }
+  .st.agent_failed, .st.pr_failed { background: #3d1418; color: #f85149; }
+  .st.agent_stuck, .st.agent_timeout { background: #3d2e00; color: #d29922; }
+  .st.pushing { background: #1b3a4b; color: #79c0ff; }
+  .st.queued, .st.no_changes { background: #30363d; color: #8b949e; }
+  .st.running { background: #0d419d; color: #58a6ff; }
+  .st.done { background: #0f3d1c; color: #3fb950; }
+  .st.passed { background: #0f3d1c; color: #3fb950; }
+  .st.failed { background: #3d1418; color: #f85149; }
+  .st.pending { background: #30363d; color: #8b949e; }
+  .st.started { background: #0d419d; color: #58a6ff; }
+
+  .mono { font-family: 'SF Mono', Consolas, monospace; font-size: 13px; color: #79c0ff; }
+  .muted { color: #8b949e; font-size: 12px; }
+  a { color: #58a6ff; text-decoration: none; } a:hover { text-decoration: underline; }
+  .empty { padding: 32px 20px; text-align: center; color: #484f58; font-size: 14px; }
+
+  /* Spinner */
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .spinner {
+    display: inline-block; width: 14px; height: 14px; border: 2px solid #30363d;
+    border-top-color: #58a6ff; border-radius: 50%; animation: spin .8s linear infinite;
+    vertical-align: middle; margin-right: 6px;
+  }
+
+  /* Form */
+  .form-row { display: flex; gap: 12px; padding: 16px 20px; align-items: flex-end; flex-wrap: wrap; }
+  .form-group { display: flex; flex-direction: column; gap: 4px; }
+  .form-group label { font-size: 12px; color: #8b949e; text-transform: uppercase; letter-spacing: .5px; }
+  .form-group input {
+    background: #0d1117; border: 1px solid #30363d; border-radius: 6px;
+    padding: 8px 12px; color: #c9d1d9; font-size: 14px; outline: none;
+  }
+  .form-group input:focus { border-color: #58a6ff; }
+  .form-group input::placeholder { color: #484f58; }
+  .btn {
+    background: #238636; border: 1px solid #2ea043; color: #fff;
+    padding: 8px 16px; border-radius: 6px; font-size: 14px; font-weight: 500;
+    cursor: pointer;
+  }
+  .btn:hover { background: #2ea043; }
+  .btn:disabled { opacity: .5; cursor: not-allowed; }
+  .form-msg { font-size: 13px; padding: 0 20px 12px; }
+  .form-msg.ok { color: #3fb950; } .form-msg.err { color: #f85149; }
+
+  /* Capacity */
+  .cap-bar { height: 8px; background: #21262d; border-radius: 4px; overflow: hidden; margin: 12px 20px 4px; }
+  .cap-fill { height: 100%; border-radius: 4px; transition: width .3s; background: #58a6ff; }
+  .cap-legend { display: flex; gap: 16px; padding: 0 20px 16px; font-size: 12px; color: #8b949e; }
+  .cap-legend .ai::before { content:''; display:inline-block; width:8px; height:8px; border-radius:2px; margin-right:6px; background:#58a6ff; vertical-align:middle; }
+  .cap-legend .human::before { content:''; display:inline-block; width:8px; height:8px; border-radius:2px; margin-right:6px; background:#d29922; vertical-align:middle; }
+
+  /* Projects */
+  .proj-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; padding: 16px 20px; }
+  .proj-card { background: #0d1117; border: 1px solid #30363d; border-radius: 6px; padding: 14px 16px; }
+  .proj-card .name { font-weight: 600; color: #58a6ff; margin-bottom: 4px; }
+  .proj-card .repo { font-size: 13px; color: #8b949e; font-family: monospace; }
+
+  footer { text-align: center; padding: 24px; color: #484f58; font-size: 12px; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1><span>ReKnew</span> AI-SDLC Dashboard</h1>
+  <div class="header-meta">
+    <span><span class="dot" id="hd"></span><span id="ht">connecting...</span></span>
+    <span id="up"></span>
+    <span>v<span id="ver">-</span></span>
+  </div>
+</header>
+
+<div class="container">
+
+  <!-- Process Issue Form -->
+  <div class="section">
+    <div class="section-header">Process Issue</div>
+    <form id="process-form" onsubmit="return submitIssue(event)">
+      <div class="form-row">
+        <div class="form-group" style="flex:1">
+          <label>Repository (owner/repo)</label>
+          <input id="f-repo" placeholder="rajatsxngh/sdlc-test-project" required>
+        </div>
+        <div class="form-group" style="width:120px">
+          <label>Issue #</label>
+          <input id="f-issue" type="number" min="1" placeholder="1" required>
+        </div>
+        <button class="btn" type="submit" id="f-btn">Run Pipeline</button>
+      </div>
+    </form>
+    <div class="form-msg" id="f-msg"></div>
+  </div>
+
+  <!-- Metric Cards -->
+  <div class="cards">
+    <div class="card"><div class="label">Total Tasks</div><div class="value blue" id="m-total">0</div></div>
+    <div class="card"><div class="label">AI Tasks</div><div class="value green" id="m-ai">0</div></div>
+    <div class="card"><div class="label">Human Tasks</div><div class="value orange" id="m-human">0</div></div>
+    <div class="card"><div class="label">Active Agents</div><div class="value purple" id="m-agents">0</div></div>
+    <div class="card"><div class="label">PRs Created</div><div class="value green" id="m-prs">0</div></div>
+  </div>
+
+  <!-- Capacity -->
+  <div class="section">
+    <div class="section-header">Capacity Overview <span class="badge" id="cap-ratio"></span></div>
+    <div class="cap-bar"><div class="cap-fill" id="cap-bar" style="width:0"></div></div>
+    <div class="cap-legend">
+      <span class="ai">AI: <strong id="cap-ai">0%</strong></span>
+      <span class="human">Human: <strong id="cap-hu">0%</strong></span>
+    </div>
+  </div>
+
+  <!-- Tasks -->
+  <div class="section">
+    <div class="section-header">Tasks <span class="badge" id="n-tasks">0</span></div>
+    <div class="section-body" id="sec-tasks"><div class="empty">No tasks yet &mdash; use the form above to process an issue</div></div>
+  </div>
+
+  <!-- Agents -->
+  <div class="section">
+    <div class="section-header">Running Agents <span class="badge" id="n-agents">0</span></div>
+    <div class="section-body" id="sec-agents"><div class="empty">No agents running</div></div>
+  </div>
+
+  <!-- PRs -->
+  <div class="section">
+    <div class="section-header">Pull Requests <span class="badge" id="n-prs">0</span></div>
+    <div class="section-body" id="sec-prs"><div class="empty">No pull requests</div></div>
+  </div>
+
+  <!-- Pipelines -->
+  <div class="section">
+    <div class="section-header">Pipeline Runs <span class="badge" id="n-pipes">0</span></div>
+    <div class="section-body" id="sec-pipes"><div class="empty">No pipeline runs</div></div>
+  </div>
+
+  <!-- Projects -->
+  <div class="section">
+    <div class="section-header">Projects <span class="badge" id="n-proj">0</span></div>
+    <div class="section-body"><div class="proj-grid" id="sec-proj"></div></div>
+  </div>
+
+</div>
+<footer>ReKnew AI-SDLC Platform &middot; Auto-refreshes every 3s</footer>
+
+<script>
+function esc(s) { if(!s) return ''; const d=document.createElement('div'); d.textContent=String(s); return d.innerHTML; }
+function stBadge(s) { const v=(s||'pending').toLowerCase(); return '<span class="st '+v+'">'+v.replace(/_/g,' ')+'</span>'; }
+function fmtUp(s) { if(s<60) return s+'s'; if(s<3600) return Math.floor(s/60)+'m'; return Math.floor(s/3600)+'h '+Math.floor((s%3600)/60)+'m'; }
+function fmtBytes(b) { if(b<1024) return b+' B'; if(b<1048576) return (b/1024).toFixed(1)+' KB'; return (b/1048576).toFixed(1)+' MB'; }
+
+async function api(path, opts) {
+  try { const r=await fetch(path, opts); return r.ok ? await r.json() : null; } catch(e) { return null; }
+}
+
+async function submitIssue(e) {
+  e.preventDefault();
+  const repo = document.getElementById('f-repo').value.trim();
+  const num = parseInt(document.getElementById('f-issue').value);
+  const msg = document.getElementById('f-msg');
+  const btn = document.getElementById('f-btn');
+  if(!repo || !num) { msg.className='form-msg err'; msg.textContent='Fill in all fields'; return false; }
+  btn.disabled = true; btn.textContent = 'Starting...';
+  msg.className='form-msg'; msg.textContent='';
+  const res = await api('/api/process', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({repo, issue_number: num}),
+  });
+  btn.disabled = false; btn.textContent = 'Run Pipeline';
+  if(res && res.status === 'started') {
+    msg.className='form-msg ok'; msg.textContent='Pipeline started! Watch progress below.';
+  } else if(res && res.status === 'already_running') {
+    msg.className='form-msg err'; msg.textContent='This issue is already being processed.';
+  } else {
+    msg.className='form-msg err'; msg.textContent='Failed to start: '+(res?res.error||JSON.stringify(res):'network error');
+  }
+  return false;
+}
+
+async function refresh() {
+  // Health
+  const h = await api('/api/health');
+  const hd = document.getElementById('hd'), ht = document.getElementById('ht');
+  if(h && h.status==='ok') {
+    hd.className='dot ok'; ht.textContent='connected';
+    document.getElementById('up').textContent='uptime: '+fmtUp(h.uptime_seconds);
+    document.getElementById('ver').textContent=h.version;
+  } else { hd.className='dot err'; ht.textContent='disconnected'; }
+
+  // Capacity
+  const cap = await api('/api/capacity');
+  if(cap) {
+    document.getElementById('m-total').textContent=cap.total||0;
+    document.getElementById('m-ai').textContent=cap.ai||0;
+    document.getElementById('m-human').textContent=cap.human||0;
+    document.getElementById('cap-ratio').textContent=cap.compression_ratio||'';
+    const t=(cap.ai||0)+(cap.human||0);
+    if(t>0) {
+      const p=Math.round((cap.ai/t)*100);
+      document.getElementById('cap-bar').style.width=p+'%';
+      document.getElementById('cap-ai').textContent=p+'%';
+      document.getElementById('cap-hu').textContent=(100-p)+'%';
+    } else {
+      document.getElementById('cap-bar').style.width='0';
+      document.getElementById('cap-ai').textContent='0%';
+      document.getElementById('cap-hu').textContent='0%';
+    }
+  }
+
+  // Tasks
+  const tasks = await api('/api/tasks');
+  const secT = document.getElementById('sec-tasks');
+  document.getElementById('n-tasks').textContent=tasks?tasks.length:0;
+  if(tasks && tasks.length) {
+    let html='<table><thead><tr><th>ID</th><th>Title</th><th>State</th><th>Agent</th><th>Files</th><th>PR</th></tr></thead><tbody>';
+    for(const t of tasks) {
+      const running = t.state==='agent_running';
+      const stateCell = running ? '<span class="spinner"></span>'+stBadge(t.state) : stBadge(t.state);
+      const prCell = t.pr_url ? '<a href="'+esc(t.pr_url)+'" target="_blank">#'+t.pr_number+'</a>' : '-';
+      html+='<tr>'
+        +'<td class="mono">'+esc(t.id)+'</td>'
+        +'<td>'+esc(t.title)+'</td>'
+        +'<td>'+stateCell+'</td>'
+        +'<td class="muted">'+esc(t.agent_type||'-')+'</td>'
+        +'<td>'+(t.files_changed!=null?t.files_changed:'-')+'</td>'
+        +'<td>'+prCell+'</td>'
+        +'</tr>';
+    }
+    html+='</tbody></table>';
+    secT.innerHTML=html;
+  } else {
+    secT.innerHTML='<div class="empty">No tasks yet &mdash; use the form above to process an issue</div>';
+  }
+
+  // Agents
+  const agents = await api('/api/agents');
+  const secA = document.getElementById('sec-agents');
+  const nA = agents?agents.length:0;
+  document.getElementById('n-agents').textContent=nA;
+  document.getElementById('m-agents').textContent=nA;
+  if(agents && agents.length) {
+    let html='<table><thead><tr><th>Task</th><th>Agent</th><th>Status</th><th>Log Size</th><th>PID</th></tr></thead><tbody>';
+    for(const a of agents) {
+      html+='<tr>'
+        +'<td class="mono">'+esc(a.task_id)+'</td>'
+        +'<td class="muted">'+esc(a.agent_type)+'</td>'
+        +'<td><span class="spinner"></span>'+stBadge('running')+'</td>'
+        +'<td class="muted">'+fmtBytes(a.log_bytes||0)+'</td>'
+        +'<td class="mono muted">'+(a.pid||'-')+'</td>'
+        +'</tr>';
+    }
+    html+='</tbody></table>';
+    secA.innerHTML=html;
+  } else {
+    secA.innerHTML='<div class="empty">No agents running</div>';
+  }
+
+  // PRs
+  const prs = await api('/api/prs');
+  const secP = document.getElementById('sec-prs');
+  const nP = prs?prs.length:0;
+  document.getElementById('n-prs').textContent=nP;
+  document.getElementById('m-prs').textContent=nP;
+  if(prs && prs.length) {
+    let html='<table><thead><tr><th>PR</th><th>Title</th><th>CI</th><th>State</th><th>Task</th></tr></thead><tbody>';
+    for(const p of prs) {
+      const link = p.pr_url ? '<a href="'+esc(p.pr_url)+'" target="_blank">#'+p.pr_number+'</a>' : '#'+p.pr_number;
+      html+='<tr>'
+        +'<td class="mono">'+link+'</td>'
+        +'<td>'+esc(p.title)+'</td>'
+        +'<td>'+stBadge(p.ci_status||'pending')+'</td>'
+        +'<td>'+stBadge(p.state)+'</td>'
+        +'<td class="mono">'+esc(p.task_id)+'</td>'
+        +'</tr>';
+    }
+    html+='</tbody></table>';
+    secP.innerHTML=html;
+  } else {
+    secP.innerHTML='<div class="empty">No pull requests</div>';
+  }
+
+  // Pipelines
+  const pipes = await api('/api/pipelines');
+  const secPi = document.getElementById('sec-pipes');
+  document.getElementById('n-pipes').textContent=pipes?pipes.length:0;
+  if(pipes && pipes.length) {
+    let html='<table><thead><tr><th>Repo</th><th>Issue</th><th>Status</th><th>Started</th></tr></thead><tbody>';
+    for(const p of pipes) {
+      const running = p.status==='running';
+      const stateCell = running ? '<span class="spinner"></span>'+stBadge(p.status) : stBadge(p.status);
+      const ago = p.started_at ? fmtUp(Math.floor((Date.now()/1000) - p.started_at))+' ago' : '-';
+      html+='<tr>'
+        +'<td class="mono">'+esc(p.repo)+'</td>'
+        +'<td>#'+esc(p.issue_number)+'</td>'
+        +'<td>'+stateCell+'</td>'
+        +'<td class="muted">'+ago+'</td>'
+        +'</tr>';
+    }
+    html+='</tbody></table>';
+    secPi.innerHTML=html;
+  } else {
+    secPi.innerHTML='<div class="empty">No pipeline runs</div>';
+  }
+
+  // Projects
+  const proj = await api('/api/projects');
+  const secPr = document.getElementById('sec-proj');
+  document.getElementById('n-proj').textContent=proj?proj.length:0;
+  if(proj && proj.length) {
+    secPr.innerHTML=proj.map(p =>
+      '<div class="proj-card"><div class="name">'+esc(p.name)+'</div>'
+      +'<div class="repo">'+esc(p.repo)+'</div>'
+      +'<div class="muted" style="margin-top:4px">branch: '+esc(p.default_branch)+'</div></div>'
+    ).join('');
+  } else {
+    secPr.innerHTML='<div class="empty">No projects</div>';
+  }
+}
+
+refresh();
+setInterval(refresh, 3000);
+</script>
+</body>
+</html>

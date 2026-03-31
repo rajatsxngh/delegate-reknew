@@ -1,15 +1,21 @@
 """FastAPI routes for the ReKnew dashboard."""
 
+import asyncio
+import threading
 import time
+from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 
 from reknew.config import ReknewConfig
 from reknew.dashboard.websocket import EventBroadcaster
+from reknew import state
 
 VERSION = "0.1.0"
+FRONTEND_DIR = Path(__file__).parent / "frontend"
 
 
 def create_app(config: ReknewConfig, daemon: Any = None) -> FastAPI:
@@ -33,10 +39,12 @@ def create_app(config: ReknewConfig, daemon: Any = None) -> FastAPI:
     start_time = time.time()
     broadcaster = EventBroadcaster()
 
-    # Expose broadcaster on app state for external access
     app.state.broadcaster = broadcaster
 
-    # ── Health ────────────────────────────────────────────────────────
+    # Track background pipeline runs
+    _running_pipelines: dict[str, dict] = {}
+
+    # -- Health ---------------------------------------------------------
 
     @app.get("/api/health")
     def health() -> dict:
@@ -46,11 +54,10 @@ def create_app(config: ReknewConfig, daemon: Any = None) -> FastAPI:
             "uptime_seconds": int(time.time() - start_time),
         }
 
-    # ── Config ────────────────────────────────────────────────────────
+    # -- Config ---------------------------------------------------------
 
     @app.get("/api/config")
     def get_config() -> dict:
-        """Return serialized config with secrets redacted."""
         projects = {}
         for name, p in config.projects.items():
             projects[name] = {
@@ -75,12 +82,16 @@ def create_app(config: ReknewConfig, daemon: Any = None) -> FastAPI:
             "port": config.port,
         }
 
-    # ── Projects ──────────────────────────────────────────────────────
+    # -- Projects -------------------------------------------------------
 
     @app.get("/api/projects")
     def list_projects() -> list[dict]:
         return [
-            {"name": name, "repo": p.repo, "default_branch": p.default_branch}
+            {
+                "name": name,
+                "repo": p.repo,
+                "default_branch": p.default_branch,
+            }
             for name, p in config.projects.items()
         ]
 
@@ -113,105 +124,152 @@ def create_app(config: ReknewConfig, daemon: Any = None) -> FastAPI:
             return {"task_ids": task_ids, "status": "processing"}
         return {"status": "daemon not available"}
 
-    # ── Tasks ─────────────────────────────────────────────────────────
+    # -- Process (direct, no daemon needed) -----------------------------
+
+    @app.post("/api/process")
+    async def process_direct(body: dict) -> dict:
+        """Run pipeline from dashboard UI. Runs in a background thread.
+
+        Expects JSON body: {"repo": "owner/repo", "issue_number": 1}
+        """
+        repo = body.get("repo", "")
+        issue_number = body.get("issue_number")
+        if not repo or not issue_number:
+            return {"error": "repo and issue_number are required"}
+
+        key = f"{repo}#{issue_number}"
+        if key in _running_pipelines:
+            return {"status": "already_running", "key": key}
+
+        def _run() -> None:
+            from reknew.main import (
+                _check_prerequisites,
+                _ensure_dirs,
+                run_single_issue,
+            )
+            _ensure_dirs()
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                loop.run_until_complete(
+                    run_single_issue(repo, int(issue_number))
+                )
+                _running_pipelines[key]["status"] = "done"
+            except Exception as exc:
+                _running_pipelines[key]["status"] = f"error: {exc}"
+            finally:
+                loop.close()
+
+        _running_pipelines[key] = {
+            "status": "running",
+            "repo": repo,
+            "issue_number": issue_number,
+            "started_at": time.time(),
+        }
+        thread = threading.Thread(target=_run, daemon=True)
+        thread.start()
+
+        return {"status": "started", "key": key}
+
+    @app.get("/api/pipelines")
+    def list_pipelines() -> list[dict]:
+        """List running/completed pipeline runs."""
+        return [
+            {"key": k, **v}
+            for k, v in _running_pipelines.items()
+        ]
+
+    # -- Tasks (reads from shared state) --------------------------------
 
     @app.get("/api/tasks")
     def list_tasks(
-        state: str | None = Query(None),
-        project: str | None = Query(None),
+        state_filter: str | None = Query(None, alias="state"),
     ) -> list[dict]:
-        if daemon and hasattr(daemon, "tasks"):
-            tasks = list(daemon.tasks.values())
-            result = []
-            for t in tasks:
-                d = t.to_dict() if hasattr(t, "to_dict") else t
-                if state and d.get("state") != state:
-                    continue
-                result.append(d)
-            return result
-        return []
+        data = state.read_state()
+        tasks = list(data.get("tasks", {}).values())
+        if state_filter:
+            tasks = [t for t in tasks if t.get("state") == state_filter]
+        return tasks
 
     @app.get("/api/tasks/{task_id}")
     def get_task(task_id: str) -> dict:
-        if daemon and hasattr(daemon, "tasks"):
-            task = daemon.tasks.get(task_id)
-            if task:
-                return task.to_dict() if hasattr(task, "to_dict") else task
+        data = state.read_state()
+        task = data.get("tasks", {}).get(task_id)
+        if task:
+            return task
         return {"error": "Task not found"}
 
-    # ── Capacity ──────────────────────────────────────────────────────
+    # -- Capacity (reads from shared state) -----------------------------
 
     @app.get("/api/capacity")
     def get_capacity() -> dict:
-        if daemon and hasattr(daemon, "router"):
-            decisions = {}
-            for tid, task in daemon.tasks.items():
-                if hasattr(task, "routing_decision") and task.routing_decision:
-                    decisions[tid] = task.routing_decision
-            summary = daemon.router.get_capacity_summary(decisions)
-            summary["compression_ratio"] = "2 weeks -> 30 minutes"
-            return summary
+        data = state.read_state()
+        cap = data.get("capacity", {})
         return {
-            "total": 0,
-            "human": 0,
-            "ai": 0,
+            "total": cap.get("total", 0),
+            "human": cap.get("human", 0),
+            "ai": cap.get("ai", 0),
             "human_tasks": [],
             "ai_tasks": [],
             "rules_matched": {},
+            "compression_ratio": "2 weeks -> 30 minutes",
         }
 
     @app.get("/api/capacity/history")
     def get_capacity_history() -> list[dict]:
-        # Placeholder — history requires persistent storage
         return []
 
-    # ── Agents ────────────────────────────────────────────────────────
+    # -- Agents (reads from shared state) -------------------------------
 
     @app.get("/api/agents")
     def list_agents() -> list[dict]:
-        if daemon and hasattr(daemon, "spawner"):
-            statuses = daemon.spawner.get_all_statuses()
-            result = []
-            for tid, status in statuses.items():
-                info = daemon.spawner.running.get(tid, {})
-                result.append({
+        data = state.read_state()
+        agents = []
+        for tid, task in data.get("tasks", {}).items():
+            if task.get("state") in ("agent_running", "worktree_created"):
+                agents.append({
                     "task_id": tid,
-                    "agent_type": config.defaults.agent,
-                    "status": status.value,
-                    "worktree": info.get("worktree", ""),
+                    "agent_type": task.get("agent_type", "claude-code"),
+                    "status": "running",
+                    "worktree": task.get("worktree", ""),
+                    "log_bytes": task.get("log_bytes", 0),
+                    "pid": task.get("pid"),
                 })
-            return result
-        return []
+        return agents
 
-    # ── PRs ───────────────────────────────────────────────────────────
+    # -- PRs (reads from shared state) ----------------------------------
 
     @app.get("/api/prs")
     def list_prs() -> list[dict]:
-        if daemon and hasattr(daemon, "tasks"):
-            prs = []
-            for tid, task in daemon.tasks.items():
-                d = task.to_dict() if hasattr(task, "to_dict") else task
-                if d.get("pr_number"):
-                    prs.append({
-                        "pr_number": d["pr_number"],
-                        "title": d["title"],
-                        "ci_status": d.get("ci_status", ""),
-                        "state": d.get("state", ""),
-                        "task_id": tid,
-                    })
-            return prs
-        return []
+        data = state.read_state()
+        prs = []
+        for tid, task in data.get("tasks", {}).items():
+            if task.get("pr_number"):
+                prs.append({
+                    "task_id": tid,
+                    "pr_number": task["pr_number"],
+                    "pr_url": task.get("pr_url", ""),
+                    "title": task.get("title", ""),
+                    "ci_status": task.get("ci_status", "pending"),
+                    "state": task.get("state", ""),
+                })
+        return prs
 
-    # ── WebSocket ─────────────────────────────────────────────────────
+    # -- WebSocket ------------------------------------------------------
 
     @app.websocket("/ws/events")
     async def ws_events(websocket: WebSocket) -> None:
         await broadcaster.connect(websocket)
         try:
             while True:
-                # Keep connection alive; client doesn't send data
                 await websocket.receive_text()
         except WebSocketDisconnect:
             await broadcaster.disconnect(websocket)
+
+    # -- Frontend -------------------------------------------------------
+
+    @app.get("/")
+    def serve_frontend() -> FileResponse:
+        return FileResponse(FRONTEND_DIR / "index.html")
 
     return app

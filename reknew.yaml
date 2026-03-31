@@ -14,6 +14,16 @@ projects:
     default_branch: main
     test_command: "pytest -x"       # Pre-merge check command
     path: ""                        # Local clone path (auto-populated)
+  expense-tracker:
+    repo: rajatsxngh/expense-tracker
+    default_branch: main
+    test_command: ""
+    path: ""
+  sdlc-test:
+    repo: rajatsxngh/sdlc-test-project
+    default_branch: main
+    test_command: "pytest -x"
+    path: ""
 
 # ─── Defaults ─────────────────────────────────────────
 defaults:
